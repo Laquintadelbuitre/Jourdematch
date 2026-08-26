@@ -254,13 +254,23 @@ function demarrerVueParents(matchId, conteneur){
     conteneur.querySelector('#p-btn-annuler').addEventListener('click', annulerDerniere);
   }
 
-  async function marquerBut(joueur){
-    const data = await appelApi('enregistrerBut', { matchId, buteur: joueur, role: 'parent' });
-    if(!data.ok){ afficherToast('Erreur, réessayez.'); return; }
-    etatMatch = data.match;
-    dernierEventId = data.eventId;
-    render();
+  let promesseButEnCours = null;
+
+  function marquerBut(joueur){
+    // Mise à jour optimiste : on ouvre tout de suite la fenêtre de passe avec
+    // la liste déjà connue localement, sans attendre la réponse du serveur.
+    dernierEventId = null;
     ouvrirModalPasse(joueur);
+
+    promesseButEnCours = appelApi('enregistrerBut', { matchId, buteur: joueur, role: 'parent' })
+      .then(data => {
+        if(!data.ok){ afficherToast('Erreur, réessayez.'); return null; }
+        etatMatch = data.match;
+        dernierEventId = data.eventId;
+        render();
+        return data.eventId;
+      })
+      .catch(()=>{ afficherToast('Erreur, réessayez.'); return null; });
   }
 
   function ouvrirModalPasse(joueur){
@@ -282,7 +292,11 @@ function demarrerVueParents(matchId, conteneur){
 
   async function choisirPasseur(passeur){
     fermerModalPasse();
-    const data = await appelApi('enregistrerPasse', { matchId, eventId: dernierEventId, passeur });
+    // Si le but n'a pas encore fini de s'enregistrer côté serveur (cas rare,
+    // clic très rapide), on patiente juste ce qu'il faut pour avoir l'eventId.
+    const eventId = dernierEventId || (promesseButEnCours && await promesseButEnCours);
+    if(!eventId){ afficherToast('Erreur, réessayez.'); return; }
+    const data = await appelApi('enregistrerPasse', { matchId, eventId, passeur });
     if(data.ok){ etatMatch = data.match; render(); afficherToast(`Passe de ${passeur} notée`); }
   }
 
