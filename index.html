@@ -123,8 +123,8 @@ function afficherEcranMotDePasse(){
 }
 
 function afficherAppCoach(pwd){
-  let effectif = [];
   const EQUIPES_FIXES = ['U13-1', 'U13-2'];
+  const EFFECTIF_FIXE = ['Abdoul Karim', 'Adam', 'Bakoutoubo', 'Bilel', 'Emir', 'Ethan', 'Gabin', 'Hadi', 'Issam', 'Jalil', 'Kalifa', 'Keys', 'Loan', 'Mathis', 'Melih', 'Mickaël', 'Nourou', 'Pablo', 'Sacha', 'Sarah', 'Sebastien', 'Yanis'];
   let calendrier = [];
   let matchActuel = null;
   let etatMatch = null;
@@ -140,12 +140,8 @@ function afficherAppCoach(pwd){
   async function chargerAccueil(){
     racine.innerHTML = enteteCoach() + `<main><p class="etat">Chargement…</p></main>`;
     try {
-      const [resCal, resEff] = await Promise.all([
-        appelApiGet('action=calendrier'),
-        appelApiGet('action=effectif')
-      ]);
+      const resCal = await appelApiGet('action=calendrier');
       calendrier = resCal.ok ? resCal.calendrier : [];
-      effectif = resEff.ok ? resEff.effectif : [];
       renderAccueil();
     } catch (err) {
       racine.innerHTML = enteteCoach() + `<main><div class="carte">
@@ -185,13 +181,6 @@ function afficherAppCoach(pwd){
         </div>
 
         <div class="carte">
-          <p class="section-label">Effectif du groupe (${effectif.length} joueurs)</p>
-          <textarea id="effectifTexte" rows="4">${effectif.join(', ')}</textarea>
-          <p style="font-size:12px; color:var(--texte-doux); margin:6px 0 10px;">Un nom par virgule. Sert de base pour convoquer les joueurs à chaque match.</p>
-          <button class="btn btn-discret" id="btn-maj-effectif">Mettre à jour l'effectif</button>
-        </div>
-
-        <div class="carte">
           <p class="section-label">Calendrier des matchs</p>
           <div class="liste-matchs">${items}</div>
         </div>
@@ -200,7 +189,6 @@ function afficherAppCoach(pwd){
 
     document.getElementById('c-deconnexion').addEventListener('click', deconnexion);
     document.getElementById('btn-creer-match').addEventListener('click', creerMatch);
-    document.getElementById('btn-maj-effectif').addEventListener('click', enregistrerEffectif);
     document.querySelectorAll('.item-match').forEach(el=>{
       el.addEventListener('click', ()=> ouvrirMatch(el.dataset.id));
     });
@@ -223,13 +211,6 @@ function afficherAppCoach(pwd){
     else afficherToast(data.error || 'Erreur.');
   }
 
-  async function enregistrerEffectif(){
-    const joueurs = document.getElementById('effectifTexte').value.split(',').map(s=>s.trim()).filter(Boolean);
-    const data = await appelApi('setEffectif', { pwd, joueurs });
-    if(data.ok){ effectif = joueurs; afficherToast('Effectif mis à jour.'); }
-    else afficherToast(data.error || 'Erreur.');
-  }
-
   async function ouvrirMatch(matchId){
     matchActuel = matchId;
     const res = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
@@ -241,7 +222,7 @@ function afficherAppCoach(pwd){
   function renderMatch(){
     const info = etatMatch.info;
     const convoques = new Set(etatMatch.convocations || []);
-    const cases = effectif.map(j => `
+    const cases = EFFECTIF_FIXE.map(j => `
       <label class="case-joueur">
         <input type="checkbox" value="${j}" ${convoques.has(j) ? 'checked' : ''}>
         ${j}
