@@ -1,411 +1,311 @@
-/**
- * MATCHDAY LIVE — backend Google Apps Script
- * -------------------------------------------------
- * A coller dans l'éditeur Apps Script lié à votre Google Sheet
- * (Extensions > Apps Script, depuis le Sheet dédié à cet outil).
- *
- * 1) Exécutez une fois la fonction setup() (menu Exécuter > setup)
- *    pour créer/mettre à jour les onglets et les en-têtes.
- *    (Sans danger à relancer plusieurs fois : ça ne touche jamais aux
- *    données déjà saisies, seulement à la structure des onglets.)
- * 2) Déployez : Déployer > Nouveau déploiement > Type "Application Web"
- *    - Exécuter en tant que : Moi
- *    - Qui a accès : Tout le monde
- * 3) Copiez l'URL "/exec" fournie et collez-la dans API_URL en haut
- *    de index.html.
- */
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestion des matchs</title>
+<style>
+  :root{
+    --vert:#1f5f3f; --vert-clair:#2e8659; --fond:#f4f6f4; --carte:#ffffff;
+    --texte:#1a2a22; --texte-doux:#5c6b62; --ligne:#dfe6e1; --rouge:#b3413a;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--fond); color:var(--texte); padding-bottom:3rem; }
+  header{ background:var(--vert); color:#fff; padding:1rem; }
+  header.tete-coach{ display:flex; align-items:center; justify-content:space-between; }
+  header.tete-coach h1{ font-size:16px; font-weight:600; margin:0; }
+  header.tete-coach button{ background:rgba(255,255,255,0.15); color:#fff; border:none;
+    border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; }
+  main{ max-width:520px; margin:0 auto; padding:1.25rem 1rem; }
+  .carte{ background:var(--carte); border:1px solid var(--ligne); border-radius:14px; padding:1.25rem; margin-bottom:1.25rem; }
+  .section-label{ font-size:13px; color:var(--texte-doux); font-weight:600;
+    text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
+  input, select, textarea{ width:100%; padding:10px 12px; border:1.5px solid var(--ligne);
+    border-radius:8px; font-size:15px; margin-bottom:10px; background:#fff; color:var(--texte); font-family:inherit; }
+  label.champ{ font-size:13px; color:var(--texte-doux); display:block; margin-bottom:4px; }
+  .btn{ width:100%; padding:12px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; margin-bottom:8px; }
+  .btn-principal{ background:var(--vert); color:#fff; }
+  .btn-principal:active{ background:var(--vert-clair); }
+  .btn-discret{ background:var(--fond); color:var(--texte); border:1.5px solid var(--ligne); }
+  .btn-rouge{ background:#fff; color:var(--rouge); border:1.5px solid #e3cfcd; }
+  .liste-matchs{ display:flex; flex-direction:column; gap:8px; }
+  .item-match{ display:flex; justify-content:space-between; align-items:center;
+    padding:12px 14px; border:1.5px solid var(--ligne); border-radius:10px; cursor:pointer; }
+  .item-match:active{ background:var(--fond); }
+  .item-match .droite{ font-size:12px; color:var(--texte-doux); }
+  .grille-cases{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+  .case-joueur{ display:flex; align-items:center; gap:8px; border:1.5px solid var(--ligne);
+    border-radius:8px; padding:8px 10px; font-size:14px; }
+  .case-joueur input{ width:auto; margin:0; }
+  .score-live{ text-align:center; font-size:40px; font-weight:700; margin-bottom:14px; }
+  .grille-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .lien-parent{ display:flex; gap:8px; align-items:center; background:var(--fond); border-radius:8px;
+    padding:10px; margin-bottom:10px; font-size:12px; color:var(--texte-doux); word-break:break-all; }
+  .lien-parent button{ flex-shrink:0; background:var(--vert); color:#fff; border:none;
+    border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  .retour{ background:none; border:none; color:var(--texte-doux); font-size:13px; margin-bottom:14px; cursor:pointer; padding:0; }
+  .masque{ display:none; }
+  .etat{ text-align:center; color:var(--texte-doux); font-size:14px; padding:2rem 1rem; }
+  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--texte);
+    color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; opacity:0; pointer-events:none;
+    transition:opacity 0.25s ease; z-index:60; }
+  .toast.visible{ opacity:1; }
+</style>
+</head>
+<body>
 
-const MOT_DE_PASSE_COACH = '0501';
+<div id="racine"></div>
+<div class="toast" id="toast"></div>
 
-const SHEET_CALENDRIER = 'Calendrier';
-const SHEET_EFFECTIF = 'Effectif';
-const SHEET_EQUIPES = 'Equipes';
-const SHEET_CONVOCATIONS = 'Convocations';
-const SHEET_COMPOSITIONS = 'Compositions';
-const SHEET_EVENEMENTS = 'Evenements';
+<script>
+// ⚠️ Remplacez par l'URL de votre déploiement Apps Script (se terminant par /exec)
+const API_URL = 'https://script.google.com/macros/s/AKfycby6pUMd49pdfWTzTAwVIg_RxcOzKml9lUIVl3UDOxSeCaT-DwiJdvcbMidFIlMuHULf/exec';
 
-/**
- * Crée les onglets manquants et ajoute les colonnes manquantes sur les
- * onglets déjà existants (sans jamais supprimer de données). À exécuter
- * à chaque fois qu'une mise à jour du script ajoute de nouveaux champs.
- */
-function setup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+// Nom du fichier public (parents), situé dans le même dossier que cette page.
+const NOM_FICHIER_PARENTS = 'oe7dsbjc01.html';
 
-  const sheets = {
-    [SHEET_CALENDRIER]: ['matchId', 'date', 'heureDebut', 'equipe', 'adversaire', 'lieu'],
-    [SHEET_EFFECTIF]: ['joueur'],
-    [SHEET_EQUIPES]: ['equipe'],
-    [SHEET_CONVOCATIONS]: ['matchId', 'joueur'],
-    [SHEET_COMPOSITIONS]: ['matchId', 'joueur', 'poste'],
-    [SHEET_EVENEMENTS]: ['eventId', 'matchId', 'horodatage', 'minute', 'type', 'buteur', 'passeur', 'statut', 'saisiPar'],
-  };
+const racine = document.getElementById('racine');
 
-  Object.keys(sheets).forEach(name => {
-    let sh = ss.getSheetByName(name);
-    if (!sh) sh = ss.insertSheet(name);
+function afficherToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  setTimeout(()=> t.classList.remove('visible'), 2200);
+}
 
-    if (sh.getLastRow() === 0) {
-      sh.appendRow(sheets[name]);
-      sh.setFrozenRows(1);
-      return;
-    }
-
-    // Migration douce : ajoute en fin de ligne les colonnes manquantes
-    // sans toucher aux colonnes/données existantes.
-    const headersActuels = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-    const manquantes = sheets[name].filter(h => headersActuels.indexOf(h) === -1);
-    if (manquantes.length) {
-      sh.getRange(1, headersActuels.length + 1, 1, manquantes.length).setValues([manquantes]);
-    }
+async function appelApi(action, data){
+  data = data || {};
+  data.action = action;
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data)
   });
+  return res.json();
 }
 
-/* ---------------------------- Helpers ---------------------------- */
-
-function getSheet_(name) {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+async function appelApiGet(qs){
+  const res = await fetch(`${API_URL}?${qs}`);
+  return res.json();
 }
 
-/** Convertit les valeurs Date renvoyées par Sheets en texte lisible pour les champs concernés. */
-function normaliserValeur_(header, value) {
-  if (value instanceof Date) {
-    if (header === 'date') return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    if (header === 'heureDebut') return Utilities.formatDate(value, Session.getScriptTimeZone(), 'HH:mm');
-    if (header === 'horodatage') return value; // reste un Date, utile pour les comparaisons
-  }
-  return value;
-}
+const MOT_DE_PASSE_STOCKE = 'matchday_pwd';
 
-function sheetToObjects_(name) {
-  const sh = getSheet_(name);
-  const values = sh.getDataRange().getValues();
-  const headers = values.shift();
-  return values
-    .filter(row => row.some(cell => cell !== '' && cell !== null))
-    .map(row => {
-      const obj = {};
-      headers.forEach((h, i) => (obj[h] = normaliserValeur_(h, row[i])));
-      return obj;
-    });
-}
-
-function appendObject_(name, obj) {
-  const sh = getSheet_(name);
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  const row = headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
-  const nouvelleLigne = sh.getLastRow() + 1;
-  const range = sh.getRange(nouvelleLigne, 1, 1, row.length);
-  // Force le texte brut sur toute la ligne : empêche Sheets de convertir
-  // automatiquement une valeur comme "22:00" ou "2026-08-25" en heure/date interne.
-  range.setNumberFormat('@');
-  range.setValues([row]);
-}
-
-function jsonOut_(data) {
-  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(
-    ContentService.MimeType.JSON
-  );
-}
-
-function newId_(prefix) {
-  return prefix + '_' + Utilities.getUuid().slice(0, 8);
-}
-
-function checkPwd_(pwd) {
-  return pwd === MOT_DE_PASSE_COACH;
-}
-
-/* ------------------------------ GET ------------------------------- */
-
-function doGet(e) {
-  const action = e.parameter.action;
-
-  try {
-    if (action === 'calendrier') {
-      return jsonOut_({ ok: true, calendrier: sheetToObjects_(SHEET_CALENDRIER) });
-    }
-
-    if (action === 'effectif') {
-      return jsonOut_({ ok: true, effectif: sheetToObjects_(SHEET_EFFECTIF).map(r => r.joueur) });
-    }
-
-    if (action === 'equipes') {
-      return jsonOut_({ ok: true, equipes: sheetToObjects_(SHEET_EQUIPES).map(r => r.equipe) });
-    }
-
-    if (action === 'match') {
-      return jsonOut_({ ok: true, match: getMatchState_(e.parameter.matchId) });
-    }
-
-    return jsonOut_({ ok: false, error: 'Action GET inconnue.' });
-  } catch (err) {
-    return jsonOut_({ ok: false, error: String(err) });
-  }
-}
-
-/** Construit l'état complet d'un match : infos, convocations, score, événements actifs. */
-function getMatchState_(matchId) {
-  const calendrier = sheetToObjects_(SHEET_CALENDRIER).find(m => m.matchId === matchId);
-  const convocations = sheetToObjects_(SHEET_CONVOCATIONS)
-    .filter(c => c.matchId === matchId)
-    .map(c => c.joueur);
-  const composition = sheetToObjects_(SHEET_COMPOSITIONS).filter(c => c.matchId === matchId);
-  const evenements = sheetToObjects_(SHEET_EVENEMENTS).filter(ev => ev.matchId === matchId);
-
-  const valides = evenements.filter(ev => ev.statut === 'valide');
-  const scoreNous = valides.filter(ev => ev.type === 'but').length;
-  const scoreAdverse = valides.filter(ev => ev.type === 'but_adverse').length;
-
-  const derniereAction = evenements.length
-    ? evenements.reduce((a, b) => (new Date(a.horodatage) > new Date(b.horodatage) ? a : b))
-    : null;
-
-  return {
-    info: calendrier || null,
-    convocations,
-    composition,
-    evenements: valides,
-    scoreNous,
-    scoreAdverse,
-    derniereAction: derniereAction && derniereAction.statut === 'valide' ? derniereAction : null,
-  };
-}
-
-/* ------------------------------ POST ------------------------------ */
-
-function doPost(e) {
-  let body;
-  try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return jsonOut_({ ok: false, error: 'Corps de requête invalide.' });
-  }
-
-  const action = body.action;
-
-  try {
-    // Actions réservées au coach
-    if (['creerMatch', 'setConvocations', 'setComposition', 'setEffectif', 'setEquipes', 'syncConvocations'].includes(action)) {
-      if (!checkPwd_(body.pwd)) return jsonOut_({ ok: false, error: 'Mot de passe incorrect.' });
-    }
-
-    if (action === 'creerMatch') return creerMatch_(body);
-    if (action === 'setConvocations') return setConvocations_(body);
-    if (action === 'syncConvocations') return syncConvocations_(body);
-    if (action === 'setComposition') return setComposition_(body);
-    if (action === 'setEffectif') return setEffectif_(body);
-    if (action === 'setEquipes') return setEquipes_(body);
-
-    // Actions ouvertes (parents + coach)
-    if (action === 'enregistrerBut') return enregistrerBut_(body);
-    if (action === 'enregistrerPasse') return enregistrerPasse_(body);
-    if (action === 'butAdverse') return butAdverse_(body);
-    if (action === 'annulerDerniere') return annulerDerniere_(body);
-
-    return jsonOut_({ ok: false, error: 'Action POST inconnue.' });
-  } catch (err) {
-    return jsonOut_({ ok: false, error: String(err) });
-  }
-}
-
-function creerMatch_(body) {
-  const matchId = newId_('match');
-  appendObject_(SHEET_CALENDRIER, {
-    matchId,
-    date: body.date,
-    heureDebut: body.heureDebut,
-    equipe: body.equipe || '',
-    adversaire: body.adversaire,
-    lieu: body.lieu || '',
-  });
-  return jsonOut_({ ok: true, matchId });
-}
-
-function setEffectif_(body) {
-  const sh = getSheet_(SHEET_EFFECTIF);
-  const nbLignesExistantes = sh.getLastRow() - 1;
-  if (nbLignesExistantes > 0) {
-    sh.getRange(2, 1, nbLignesExistantes, 1).clearContent();
-  }
-  const joueurs = body.joueurs || [];
-  if (joueurs.length) {
-    sh.getRange(2, 1, joueurs.length, 1).setNumberFormat('@').setValues(joueurs.map(j => [j]));
-  }
-  return jsonOut_({ ok: true });
-}
-
-function setEquipes_(body) {
-  const sh = getSheet_(SHEET_EQUIPES);
-  const nbLignesExistantes = sh.getLastRow() - 1;
-  if (nbLignesExistantes > 0) {
-    sh.getRange(2, 1, nbLignesExistantes, 1).clearContent();
-  }
-  const equipes = body.equipes || [];
-  if (equipes.length) {
-    sh.getRange(2, 1, equipes.length, 1).setNumberFormat('@').setValues(equipes.map(eq => [eq]));
-  }
-  return jsonOut_({ ok: true });
-}
-
-function setConvocations_(body) {
-  ecrireConvocations_(body.matchId, body.joueurs || []);
-  return jsonOut_({ ok: true });
-}
-
-/** Écrit la liste des convoqués pour un match (remplace les convocations existantes). */
-function ecrireConvocations_(matchId, joueurs) {
-  const sh = getSheet_(SHEET_CONVOCATIONS);
-  const values = sh.getDataRange().getValues();
-  for (let i = values.length - 1; i >= 1; i--) {
-    if (values[i][0] === matchId) sh.deleteRow(i + 1);
-  }
-  joueurs.forEach(j => sh.appendRow([matchId, j]));
-}
-
-/**
- * Reçoit une convocation générée depuis un autre outil (ex. convoc-LF) et
- * l'associe au bon match dans Calendrier : retrouve un match existant pour
- * la même équipe + la même date, sinon en crée un. Met aussi à jour
- * adversaire/heure/lieu si transmis.
- */
-function syncConvocations_(body) {
-  const existant = sheetToObjects_(SHEET_CALENDRIER)
-    .find(m => m.equipe === body.equipe && m.date === body.date);
-
-  let matchId;
-  if (existant) {
-    matchId = existant.matchId;
-    mettreAJourMatch_(matchId, body);
+function demarrerVueCoach(){
+  const pwd = sessionStorage.getItem(MOT_DE_PASSE_STOCKE);
+  if (pwd) {
+    afficherAppCoach(pwd);
   } else {
-    matchId = newId_('match');
-    appendObject_(SHEET_CALENDRIER, {
-      matchId,
-      date: body.date || '',
-      heureDebut: body.heureDebut || '',
-      equipe: body.equipe || '',
-      adversaire: body.adversaire || '',
-      lieu: body.lieu || '',
+    afficherEcranMotDePasse();
+  }
+}
+
+function afficherEcranMotDePasse(){
+  racine.innerHTML = `
+    <header class="tete-coach"><h1>Gestion des matchs</h1></header>
+    <main>
+      <div class="carte">
+        <p class="section-label">Accès</p>
+        <label class="champ" for="c-pwd">Code</label>
+        <input id="c-pwd" type="password" inputmode="numeric" placeholder="Code à 4 chiffres">
+        <button class="btn btn-principal" id="c-btn-entrer">Entrer</button>
+        <p id="c-erreurPwd" style="color:var(--rouge); font-size:13px; margin:0;"></p>
+      </div>
+    </main>
+  `;
+  document.getElementById('c-btn-entrer').addEventListener('click', ()=>{
+    const val = document.getElementById('c-pwd').value.trim();
+    if(!val){ document.getElementById('c-erreurPwd').textContent = 'Entrez le code.'; return; }
+    sessionStorage.setItem(MOT_DE_PASSE_STOCKE, val);
+    afficherAppCoach(val);
+  });
+}
+
+function afficherAppCoach(pwd){
+  const EQUIPES_FIXES = ['U13-1', 'U13-2'];
+  const EFFECTIF_FIXE = ['Abdoul Karim', 'Adam', 'Bakoutoubo', 'Bilel', 'Emir', 'Ethan', 'Gabin', 'Hadi', 'Issam', 'Jalil', 'Kalifa', 'Keys', 'Loan', 'Mathis', 'Melih', 'Mickaël', 'Nourou', 'Pablo', 'Sacha', 'Sarah', 'Sebastien', 'Yanis'];
+  let calendrier = [];
+  let matchActuel = null;
+  let etatMatch = null;
+
+  function enteteCoach(){
+    return `
+      <header class="tete-coach">
+        <h1>Gestion des matchs</h1>
+        <button id="c-deconnexion">Verrouiller</button>
+      </header>`;
+  }
+
+  async function chargerAccueil(){
+    racine.innerHTML = enteteCoach() + `<main><p class="etat">Chargement…</p></main>`;
+    try {
+      const resCal = await appelApiGet('action=calendrier');
+      calendrier = resCal.ok ? resCal.calendrier : [];
+      renderAccueil();
+    } catch (err) {
+      racine.innerHTML = enteteCoach() + `<main><div class="carte">
+        <p class="section-label" style="color:var(--rouge)">Impossible de contacter le serveur</p>
+        <p style="font-size:13px; color:var(--texte-doux)">Détail technique : ${String(err.message || err)}</p>
+      </div></main>`;
+    }
+  }
+
+  function renderAccueil(){
+    const items = calendrier.slice()
+      .sort((a,b)=> new Date(b.date) - new Date(a.date))
+      .map(m => `
+        <div class="item-match" data-id="${m.matchId}">
+          <div>${m.equipe || 'Équipe'} vs ${m.adversaire}</div>
+          <div class="droite">${m.date} · ${m.heureDebut}</div>
+        </div>`
+      ).join('') || '<p style="color:var(--texte-doux); font-size:14px;">Aucun match dans le calendrier pour l’instant.</p>';
+
+    const optionsEquipes = EQUIPES_FIXES.map(eq => `<option value="${eq}">${eq}</option>`).join('');
+
+    racine.innerHTML = enteteCoach() + `
+      <main>
+        <div class="carte">
+          <p class="section-label">Ajouter un match au calendrier</p>
+          <label class="champ" for="nvEquipe">Équipe</label>
+          <select id="nvEquipe">${optionsEquipes}</select>
+          <label class="champ" for="nvAdversaire">Adversaire</label>
+          <input id="nvAdversaire" placeholder="Nom de l'équipe adverse">
+          <label class="champ" for="nvDate">Date</label>
+          <input id="nvDate" type="date">
+          <label class="champ" for="nvHeure">Heure de début</label>
+          <input id="nvHeure" type="time">
+          <label class="champ" for="nvLieu">Lieu (facultatif)</label>
+          <input id="nvLieu" placeholder="Ex. Stade municipal">
+          <button class="btn btn-principal" id="btn-creer-match">Ajouter au calendrier</button>
+        </div>
+
+        <div class="carte">
+          <p class="section-label">Calendrier des matchs</p>
+          <div class="liste-matchs">${items}</div>
+        </div>
+      </main>
+    `;
+
+    document.getElementById('c-deconnexion').addEventListener('click', deconnexion);
+    document.getElementById('btn-creer-match').addEventListener('click', creerMatch);
+    document.querySelectorAll('.item-match').forEach(el=>{
+      el.addEventListener('click', ()=> ouvrirMatch(el.dataset.id));
     });
   }
 
-  ecrireConvocations_(matchId, body.joueurs || []);
-  return jsonOut_({ ok: true, matchId });
-}
-
-/** Met à jour adversaire/heureDebut/lieu d'un match existant (uniquement les champs fournis et non vides). */
-function mettreAJourMatch_(matchId, body) {
-  const sh = getSheet_(SHEET_CALENDRIER);
-  const values = sh.getDataRange().getValues();
-  const headers = values[0];
-  const idCol = headers.indexOf('matchId');
-  for (let i = 1; i < values.length; i++) {
-    if (values[i][idCol] === matchId) {
-      ['adversaire', 'heureDebut', 'lieu'].forEach(champ => {
-        if (body[champ]) {
-          const col = headers.indexOf(champ);
-          if (col > -1) sh.getRange(i + 1, col + 1).setNumberFormat('@').setValue(body[champ]);
-        }
-      });
-      break;
-    }
-  }
-}
-
-function setComposition_(body) {
-  const sh = getSheet_(SHEET_COMPOSITIONS);
-  const values = sh.getDataRange().getValues();
-  for (let i = values.length - 1; i >= 1; i--) {
-    if (values[i][0] === body.matchId) sh.deleteRow(i + 1);
-  }
-  (body.composition || []).forEach(c => sh.appendRow([body.matchId, c.joueur, c.poste || '']));
-  return jsonOut_({ ok: true });
-}
-
-function minuteDepuisDebut_(matchId, horodatage) {
-  const match = sheetToObjects_(SHEET_CALENDRIER).find(m => m.matchId === matchId);
-  if (!match || !match.date || !match.heureDebut) return '';
-  try {
-    const debut = new Date(`${match.date}T${match.heureDebut}:00`);
-    const diffMin = Math.round((horodatage - debut) / 60000);
-    return diffMin >= 0 ? diffMin : '';
-  } catch (err) {
-    return '';
-  }
-}
-
-function enregistrerBut_(body) {
-  const eventId = newId_('evt');
-  const horodatage = new Date();
-  appendObject_(SHEET_EVENEMENTS, {
-    eventId,
-    matchId: body.matchId,
-    horodatage: horodatage.toISOString(),
-    minute: minuteDepuisDebut_(body.matchId, horodatage),
-    type: 'but',
-    buteur: body.buteur,
-    passeur: '',
-    statut: 'valide',
-    saisiPar: body.role || 'parent',
-  });
-  return jsonOut_({ ok: true, eventId, match: getMatchState_(body.matchId) });
-}
-
-function enregistrerPasse_(body) {
-  const sh = getSheet_(SHEET_EVENEMENTS);
-  const values = sh.getDataRange().getValues();
-  const headers = values[0];
-  const eventIdCol = headers.indexOf('eventId');
-  const passeurCol = headers.indexOf('passeur');
-  for (let i = 1; i < values.length; i++) {
-    if (values[i][eventIdCol] === body.eventId) {
-      sh.getRange(i + 1, passeurCol + 1).setValue(body.passeur);
-      break;
-    }
-  }
-  return jsonOut_({ ok: true, match: getMatchState_(body.matchId) });
-}
-
-function butAdverse_(body) {
-  const eventId = newId_('evt');
-  const horodatage = new Date();
-  appendObject_(SHEET_EVENEMENTS, {
-    eventId,
-    matchId: body.matchId,
-    horodatage: horodatage.toISOString(),
-    minute: minuteDepuisDebut_(body.matchId, horodatage),
-    type: 'but_adverse',
-    buteur: '',
-    passeur: '',
-    statut: 'valide',
-    saisiPar: body.role || 'parent',
-  });
-  return jsonOut_({ ok: true, match: getMatchState_(body.matchId) });
-}
-
-/** N'annule que la toute dernière action (par horodatage) du match, quel que soit son type. */
-function annulerDerniere_(body) {
-  const sh = getSheet_(SHEET_EVENEMENTS);
-  const values = sh.getDataRange().getValues();
-  const headers = values[0];
-  const matchIdCol = headers.indexOf('matchId');
-  const horodatageCol = headers.indexOf('horodatage');
-  const statutCol = headers.indexOf('statut');
-
-  let lastRowIndex = -1;
-  let lastDate = null;
-  for (let i = 1; i < values.length; i++) {
-    if (values[i][matchIdCol] === body.matchId && values[i][statutCol] === 'valide') {
-      const d = new Date(values[i][horodatageCol]);
-      if (!lastDate || d > lastDate) {
-        lastDate = d;
-        lastRowIndex = i;
-      }
-    }
+  function deconnexion(){
+    sessionStorage.removeItem(MOT_DE_PASSE_STOCKE);
+    afficherEcranMotDePasse();
   }
 
-  if (lastRowIndex === -1) return jsonOut_({ ok: false, error: 'Aucune action à annuler.' });
+  async function creerMatch(){
+    const equipe = document.getElementById('nvEquipe').value;
+    const adversaire = document.getElementById('nvAdversaire').value.trim();
+    const date = document.getElementById('nvDate').value;
+    const heureDebut = document.getElementById('nvHeure').value;
+    const lieu = document.getElementById('nvLieu').value.trim();
+    if(!adversaire || !date || !heureDebut){ afficherToast('Adversaire, date et heure sont nécessaires.'); return; }
+    const data = await appelApi('creerMatch', { pwd, equipe, adversaire, date, heureDebut, lieu });
+    if(data.ok){ afficherToast('Match ajouté au calendrier.'); chargerAccueil(); }
+    else afficherToast(data.error || 'Erreur.');
+  }
 
-  sh.getRange(lastRowIndex + 1, statutCol + 1).setValue('annule');
-  return jsonOut_({ ok: true, match: getMatchState_(body.matchId) });
+  async function ouvrirMatch(matchId){
+    matchActuel = matchId;
+    const res = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
+    if(!res.ok){ afficherToast('Erreur de chargement du match.'); return; }
+    etatMatch = res.match;
+    renderMatch();
+  }
+
+  function renderMatch(){
+    const info = etatMatch.info;
+    const convoques = new Set(etatMatch.convocations || []);
+    const cases = EFFECTIF_FIXE.map(j => `
+      <label class="case-joueur">
+        <input type="checkbox" value="${j}" ${convoques.has(j) ? 'checked' : ''}>
+        ${j}
+      </label>`
+    ).join('');
+
+    // Le lien parents pointe vers la page publique (index.html), jamais vers cette page-ci.
+    const dossier = window.location.pathname.replace(/[^/]+$/, '');
+    const lienParent = `${window.location.origin}${dossier}${NOM_FICHIER_PARENTS}?match=${matchActuel}`;
+
+    racine.innerHTML = enteteCoach() + `
+      <main>
+        <button class="retour" id="btn-retour">&larr; Retour au calendrier</button>
+
+        <div class="carte">
+          <p class="section-label">${info.equipe || 'Équipe'} vs ${info.adversaire} — ${info.date} ${info.heureDebut}</p>
+          <div class="score-live">${etatMatch.scoreNous} - ${etatMatch.scoreAdverse}</div>
+          <div class="grille-actions">
+            <button class="btn btn-principal" id="btn-action-but">But (nous)</button>
+            <button class="btn btn-discret" id="btn-action-adverse">But adverse</button>
+          </div>
+          <button class="btn btn-rouge" id="btn-action-annuler">Annuler la dernière action</button>
+        </div>
+
+        <div class="carte">
+          <p class="section-label">Lien à envoyer aux parents pour ce match</p>
+          <div class="lien-parent">
+            <span>${lienParent}</span>
+            <button id="btn-copier-lien">Copier</button>
+          </div>
+        </div>
+
+        <div class="carte">
+          <p class="section-label">Convocations (${convoques.size} sélectionné${convoques.size>1?'s':''})</p>
+          <div class="grille-cases">${cases}</div>
+          <button class="btn btn-principal" id="btn-save-convocations">Enregistrer les convocations</button>
+        </div>
+      </main>
+    `;
+
+    document.getElementById('c-deconnexion').addEventListener('click', deconnexion);
+    document.getElementById('btn-retour').addEventListener('click', renderAccueil);
+    document.getElementById('btn-action-but').addEventListener('click', actionBut);
+    document.getElementById('btn-action-adverse').addEventListener('click', actionButAdverse);
+    document.getElementById('btn-action-annuler').addEventListener('click', actionAnnuler);
+    document.getElementById('btn-copier-lien').addEventListener('click', ()=> copierLien(lienParent));
+    document.getElementById('btn-save-convocations').addEventListener('click', enregistrerConvocations);
+  }
+
+  async function actionBut(){
+    const joueur = prompt('Nom du buteur :\\n' + (etatMatch.convocations||[]).join(', '));
+    if(!joueur) return;
+    const data = await appelApi('enregistrerBut', { matchId: matchActuel, buteur: joueur.trim(), role: 'coach' });
+    if(data.ok){ etatMatch = data.match; renderMatch(); } else afficherToast(data.error);
+  }
+
+  async function actionButAdverse(){
+    const data = await appelApi('butAdverse', { matchId: matchActuel, role: 'coach' });
+    if(data.ok){ etatMatch = data.match; renderMatch(); }
+  }
+
+  async function actionAnnuler(){
+    if(!confirm('Annuler la toute dernière action enregistrée (vous ou les parents) ?')) return;
+    const data = await appelApi('annulerDerniere', { matchId: matchActuel });
+    if(data.ok){ etatMatch = data.match; renderMatch(); afficherToast('Dernière action annulée.'); }
+    else afficherToast(data.error || 'Rien à annuler.');
+  }
+
+  async function enregistrerConvocations(){
+    const joueurs = Array.from(document.querySelectorAll('.case-joueur input:checked')).map(c=>c.value);
+    const data = await appelApi('setConvocations', { pwd, matchId: matchActuel, joueurs });
+    if(data.ok){ afficherToast('Convocations enregistrées.'); ouvrirMatch(matchActuel); }
+    else afficherToast(data.error || 'Erreur.');
+  }
+
+  function copierLien(lien){
+    navigator.clipboard.writeText(lien).then(()=> afficherToast('Lien copié.'));
+  }
+
+  chargerAccueil();
 }
+
+demarrerVueCoach();
+</script>
+</body>
+</html>
