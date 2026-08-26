@@ -88,7 +88,7 @@
 
 <script>
 // ⚠️ Remplacez par l'URL de votre déploiement Apps Script (se terminant par /exec)
-const API_URL = 'COLLEZ_ICI_VOTRE_URL_APPS_SCRIPT';
+const API_URL = 'https://script.google.com/macros/s/AKfycby6pUMd49pdfWTzTAwVIg_RxcOzKml9lUIVl3UDOxSeCaT-DwiJdvcbMidFIlMuHULf/exec';
 
 const params = new URLSearchParams(window.location.search);
 const matchIdDansUrl = params.get('match');
@@ -144,13 +144,18 @@ function demarrerVueParents(matchId){
   let dernierEventId = null;
 
   async function charger(){
-    const data = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
-    if(!data.ok || !data.match.info){
-      document.getElementById('p-contenu').innerHTML = '<p class="etat">Match introuvable. Vérifiez le lien reçu.</p>';
-      return;
+    try {
+      const data = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
+      if(!data.ok || !data.match.info){
+        document.getElementById('p-contenu').innerHTML = '<p class="etat">Match introuvable. Vérifiez le lien reçu.</p>';
+        return;
+      }
+      etatMatch = data.match;
+      render();
+    } catch (err) {
+      document.getElementById('p-contenu').innerHTML =
+        `<p class="etat" style="color:var(--rouge)">Impossible de contacter le serveur.<br>Détail : ${String(err.message || err)}</p>`;
     }
-    etatMatch = data.match;
-    render();
   }
 
   function render(){
@@ -276,13 +281,21 @@ function afficherAppCoach(pwd){
 
   async function chargerAccueil(){
     racine.innerHTML = enteteCoach() + `<main><p class="etat">Chargement…</p></main>`;
-    const [resCal, resEff] = await Promise.all([
-      appelApiGet('action=calendrier'),
-      appelApiGet('action=effectif')
-    ]);
-    calendrier = resCal.ok ? resCal.calendrier : [];
-    effectif = resEff.ok ? resEff.effectif : [];
-    renderAccueil();
+    try {
+      const [resCal, resEff] = await Promise.all([
+        appelApiGet('action=calendrier'),
+        appelApiGet('action=effectif')
+      ]);
+      calendrier = resCal.ok ? resCal.calendrier : [];
+      effectif = resEff.ok ? resEff.effectif : [];
+      renderAccueil();
+    } catch (err) {
+      racine.innerHTML = enteteCoach() + `<main><div class="carte">
+        <p class="section-label" style="color:var(--rouge)">Impossible de contacter le serveur</p>
+        <p style="font-size:13px; color:var(--texte-doux)">Détail technique : ${String(err.message || err)}</p>
+        <p style="font-size:13px; color:var(--texte-doux)">Vérifiez que l'URL Apps Script (API_URL) est bien collée dans index.html, et que le déploiement est bien accessible à "Tout le monde".</p>
+      </div></main>`;
+    }
   }
 
   function renderAccueil(){
