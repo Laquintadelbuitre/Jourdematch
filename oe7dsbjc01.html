@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Suivi du match</title>
+<style>
+  :root{
+    --vert:#1f5f3f; --vert-clair:#2e8659; --fond:#f4f6f4; --carte:#ffffff;
+    --texte:#1a2a22; --texte-doux:#5c6b62; --ligne:#dfe6e1; --rouge:#b3413a;
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--fond); color:var(--texte); padding-bottom:3rem; }
+  header{ background:var(--vert); color:#fff; padding:1rem; }
+  header.tete-parent{ text-align:center; padding:1.25rem 1rem 1.5rem; }
+  .adversaire{ font-size:15px; opacity:0.85; margin:0 0 4px; }
+  .score{ font-size:44px; font-weight:700; letter-spacing:1px; }
+  .minute{ font-size:13px; opacity:0.75; margin-top:2px; }
+  main{ max-width:520px; margin:0 auto; padding:1.25rem 1rem; }
+  .section-label{ font-size:13px; color:var(--texte-doux); font-weight:600;
+    text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
+  .grille-joueurs{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:1.5rem; }
+  .btn-joueur{ background:var(--carte); border:1.5px solid var(--ligne); border-radius:12px;
+    padding:16px 8px; font-size:16px; font-weight:600; color:var(--texte); cursor:pointer;
+    min-height:56px; -webkit-tap-highlight-color:transparent; transition:transform 0.08s ease, background 0.15s ease; }
+  .btn-joueur:active{ transform:scale(0.96); background:var(--vert-clair); color:#fff; border-color:var(--vert-clair); }
+  .btn-secondaire{ width:100%; background:var(--carte); border:1.5px solid var(--ligne); border-radius:10px;
+    padding:12px; font-size:14px; color:var(--texte-doux); margin-bottom:10px; cursor:pointer; }
+  .btn-secondaire:active{ background:var(--ligne); }
+  .btn-annuler{ color:var(--rouge); border-color:#e3cfcd; }
+  .overlay{ position:fixed; inset:0; background:rgba(10,20,15,0.55); display:none;
+    align-items:flex-end; justify-content:center; z-index:50; }
+  .overlay.actif{ display:flex; }
+  .modal{ background:var(--carte); width:100%; max-width:480px; border-radius:20px 20px 0 0;
+    padding:1.5rem 1.25rem 2rem; animation:remonter 0.2s ease-out; }
+  @keyframes remonter{ from{transform:translateY(30px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+  .confirmation{ display:flex; align-items:center; gap:10px; font-size:17px; font-weight:600; color:var(--vert); margin-bottom:1rem; }
+  .pastille-ok{ width:26px;height:26px;border-radius:50%; background:var(--vert-clair); color:#fff;
+    display:flex;align-items:center;justify-content:center; font-size:15px; flex-shrink:0; }
+  .grille-passeurs{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:1rem; }
+  .btn-passeur{ background:var(--fond); border:1.5px solid var(--ligne); border-radius:10px;
+    padding:12px 6px; font-size:14px; font-weight:500; cursor:pointer; }
+  .btn-passeur:active{ background:var(--vert-clair); color:#fff; }
+  .fermer-modal{ width:100%; text-align:center; background:none; border:none; color:var(--texte-doux);
+    font-size:14px; padding:10px; cursor:pointer; }
+  .etat{ text-align:center; color:var(--texte-doux); font-size:14px; padding:2rem 1rem; }
+  .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--texte);
+    color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; opacity:0; pointer-events:none;
+    transition:opacity 0.25s ease; z-index:60; }
+  .toast.visible{ opacity:1; }
+</style>
+</head>
+<body>
+
+<div id="racine"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ⚠️ Remplacez par l'URL de votre déploiement Apps Script (se terminant par /exec)
+const API_URL = 'https://script.google.com/macros/s/AKfycby6pUMd49pdfWTzTAwVIg_RxcOzKml9lUIVl3UDOxSeCaT-DwiJdvcbMidFIlMuHULf/exec';
+
+const params = new URLSearchParams(window.location.search);
+const matchIdDansUrl = params.get('match');
+const racine = document.getElementById('racine');
+
+function afficherToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  setTimeout(()=> t.classList.remove('visible'), 2200);
+}
+
+async function appelApi(action, data){
+  data = data || {};
+  data.action = action;
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+}
+
+async function appelApiGet(qs){
+  const res = await fetch(`${API_URL}?${qs}`);
+  return res.json();
+}
+
+/* Cette page ne contient QUE la vue parents. Sans identifiant de match
+   valide dans l'URL, elle n'affiche rien d'exploitable — aucune autre
+   fonctionnalité de l'outil n'est accessible depuis ce fichier. */
+
+if (matchIdDansUrl) {
+  demarrerVueParents(matchIdDansUrl);
+} else {
+  racine.innerHTML = `<main><p class="etat">Lien invalide.</p></main>`;
+}
+
+function demarrerVueParents(matchId){
+  racine.innerHTML = `
+    <header class="tete-parent">
+      <p class="adversaire" id="p-adversaire">Chargement…</p>
+      <div class="score" id="p-score">0 - 0</div>
+      <p class="minute" id="p-minute"></p>
+    </header>
+    <main><div id="p-contenu"><p class="etat">Chargement du match…</p></div></main>
+    <div class="overlay" id="p-overlay">
+      <div class="modal">
+        <div class="confirmation">
+          <span class="pastille-ok">✓</span>
+          <span id="p-texteConfirmation">But enregistré</span>
+        </div>
+        <p class="section-label">Passe décisive ? (facultatif)</p>
+        <div class="grille-passeurs" id="p-grillePasseurs"></div>
+        <button class="fermer-modal" onclick="fermerModalPasse()">Fermer sans passeur</button>
+      </div>
+    </div>
+  `;
+
+  let etatMatch = null;
+  let dernierEventId = null;
+
+  async function charger(){
+    try {
+      const data = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
+      if(!data.ok || !data.match.info){
+        document.getElementById('p-contenu').innerHTML = '<p class="etat">Match introuvable. Vérifiez le lien reçu.</p>';
+        return;
+      }
+      etatMatch = data.match;
+      render();
+    } catch (err) {
+      document.getElementById('p-contenu').innerHTML =
+        `<p class="etat" style="color:var(--rouge)">Impossible de contacter le serveur.<br>Détail : ${String(err.message || err)}</p>`;
+    }
+  }
+
+  function render(){
+    const info = etatMatch.info;
+    document.getElementById('p-adversaire').textContent = `${info.equipe || 'Équipe'} vs ${info.adversaire}`;
+    document.getElementById('p-score').textContent = `${etatMatch.scoreNous} - ${etatMatch.scoreAdverse}`;
+    document.getElementById('p-minute').textContent = etatMatch.derniereAction && etatMatch.derniereAction.minute !== ''
+      ? `Dernière action : ${etatMatch.derniereAction.minute}e minute` : '';
+
+    const convocations = etatMatch.convocations || [];
+    const boutons = convocations.map(j =>
+      `<button class="btn-joueur" data-joueur="${j.replace(/"/g,'&quot;')}">${j}</button>`
+    ).join('');
+
+    document.getElementById('p-contenu').innerHTML = `
+      <p class="section-label">Toucher le buteur</p>
+      <div class="grille-joueurs">${boutons}</div>
+      <button class="btn-secondaire" id="p-btn-adverse">But adverse (score seulement)</button>
+      <button class="btn-secondaire btn-annuler" id="p-btn-annuler">Annuler la dernière action</button>
+    `;
+
+    document.querySelectorAll('#p-contenu .btn-joueur').forEach(btn=>{
+      btn.addEventListener('click', ()=> marquerBut(btn.dataset.joueur));
+    });
+    document.getElementById('p-btn-adverse').addEventListener('click', butAdverse);
+    document.getElementById('p-btn-annuler').addEventListener('click', annulerDerniere);
+  }
+
+  async function marquerBut(joueur){
+    const data = await appelApi('enregistrerBut', { matchId, buteur: joueur, role: 'parent' });
+    if(!data.ok){ afficherToast('Erreur, réessayez.'); return; }
+    etatMatch = data.match;
+    dernierEventId = data.eventId;
+    render();
+    ouvrirModalPasse(joueur);
+  }
+
+  function ouvrirModalPasse(joueur){
+    document.getElementById('p-texteConfirmation').textContent = `But de ${joueur} enregistré`;
+    const autres = (etatMatch.convocations || []).filter(j => j !== joueur);
+    document.getElementById('p-grillePasseurs').innerHTML = autres.map(j =>
+      `<button class="btn-passeur" data-joueur="${j.replace(/"/g,'&quot;')}">${j}</button>`
+    ).join('');
+    document.querySelectorAll('#p-grillePasseurs .btn-passeur').forEach(btn=>{
+      btn.addEventListener('click', ()=> choisirPasseur(btn.dataset.joueur));
+    });
+    document.getElementById('p-overlay').classList.add('actif');
+  }
+
+  window.fermerModalPasse = function(){
+    document.getElementById('p-overlay').classList.remove('actif');
+  };
+
+  async function choisirPasseur(passeur){
+    window.fermerModalPasse();
+    const data = await appelApi('enregistrerPasse', { matchId, eventId: dernierEventId, passeur });
+    if(data.ok){ etatMatch = data.match; render(); afficherToast(`Passe de ${passeur} notée`); }
+  }
+
+  async function butAdverse(){
+    const data = await appelApi('butAdverse', { matchId, role: 'parent' });
+    if(data.ok){ etatMatch = data.match; render(); }
+  }
+
+  async function annulerDerniere(){
+    if(!confirm('Annuler la toute dernière action enregistrée ?')) return;
+    const data = await appelApi('annulerDerniere', { matchId });
+    if(data.ok){ etatMatch = data.match; render(); afficherToast('Dernière action annulée'); }
+    else afficherToast(data.error || 'Rien à annuler.');
+  }
+
+  charger();
+  setInterval(charger, 8000);
+}
+</script>
+</body>
+</html>
