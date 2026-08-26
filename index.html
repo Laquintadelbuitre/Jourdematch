@@ -124,7 +124,7 @@ function afficherEcranMotDePasse(){
 
 function afficherAppCoach(pwd){
   let effectif = [];
-  let equipes = [];
+  const EQUIPES_FIXES = ['U13-1', 'U13-2'];
   let calendrier = [];
   let matchActuel = null;
   let etatMatch = null;
@@ -140,14 +140,12 @@ function afficherAppCoach(pwd){
   async function chargerAccueil(){
     racine.innerHTML = enteteCoach() + `<main><p class="etat">Chargement…</p></main>`;
     try {
-      const [resCal, resEff, resEq] = await Promise.all([
+      const [resCal, resEff] = await Promise.all([
         appelApiGet('action=calendrier'),
-        appelApiGet('action=effectif'),
-        appelApiGet('action=equipes')
+        appelApiGet('action=effectif')
       ]);
       calendrier = resCal.ok ? resCal.calendrier : [];
       effectif = resEff.ok ? resEff.effectif : [];
-      equipes = resEq.ok ? resEq.equipes : [];
       renderAccueil();
     } catch (err) {
       racine.innerHTML = enteteCoach() + `<main><div class="carte">
@@ -167,9 +165,7 @@ function afficherAppCoach(pwd){
         </div>`
       ).join('') || '<p style="color:var(--texte-doux); font-size:14px;">Aucun match dans le calendrier pour l’instant.</p>';
 
-    const optionsEquipes = equipes.length
-      ? equipes.map(eq => `<option value="${eq}">${eq}</option>`).join('')
-      : '<option value="">Ajoutez d\'abord une équipe ci-dessous</option>';
+    const optionsEquipes = EQUIPES_FIXES.map(eq => `<option value="${eq}">${eq}</option>`).join('');
 
     racine.innerHTML = enteteCoach() + `
       <main>
@@ -189,13 +185,6 @@ function afficherAppCoach(pwd){
         </div>
 
         <div class="carte">
-          <p class="section-label">Vos équipes (${equipes.length})</p>
-          <textarea id="equipesTexte" rows="2">${equipes.join(', ')}</textarea>
-          <p style="font-size:12px; color:var(--texte-doux); margin:6px 0 10px;">Un nom par virgule, ex. U13-1, U13-2.</p>
-          <button class="btn btn-discret" id="btn-maj-equipes">Mettre à jour les équipes</button>
-        </div>
-
-        <div class="carte">
           <p class="section-label">Effectif du groupe (${effectif.length} joueurs)</p>
           <textarea id="effectifTexte" rows="4">${effectif.join(', ')}</textarea>
           <p style="font-size:12px; color:var(--texte-doux); margin:6px 0 10px;">Un nom par virgule. Sert de base pour convoquer les joueurs à chaque match.</p>
@@ -211,7 +200,6 @@ function afficherAppCoach(pwd){
 
     document.getElementById('c-deconnexion').addEventListener('click', deconnexion);
     document.getElementById('btn-creer-match').addEventListener('click', creerMatch);
-    document.getElementById('btn-maj-equipes').addEventListener('click', enregistrerEquipes);
     document.getElementById('btn-maj-effectif').addEventListener('click', enregistrerEffectif);
     document.querySelectorAll('.item-match').forEach(el=>{
       el.addEventListener('click', ()=> ouvrirMatch(el.dataset.id));
@@ -229,17 +217,9 @@ function afficherAppCoach(pwd){
     const date = document.getElementById('nvDate').value;
     const heureDebut = document.getElementById('nvHeure').value;
     const lieu = document.getElementById('nvLieu').value.trim();
-    if(!equipe){ afficherToast('Ajoutez et sélectionnez une équipe avant de créer un match.'); return; }
     if(!adversaire || !date || !heureDebut){ afficherToast('Adversaire, date et heure sont nécessaires.'); return; }
     const data = await appelApi('creerMatch', { pwd, equipe, adversaire, date, heureDebut, lieu });
     if(data.ok){ afficherToast('Match ajouté au calendrier.'); chargerAccueil(); }
-    else afficherToast(data.error || 'Erreur.');
-  }
-
-  async function enregistrerEquipes(){
-    const nvEquipes = document.getElementById('equipesTexte').value.split(',').map(s=>s.trim()).filter(Boolean);
-    const data = await appelApi('setEquipes', { pwd, equipes: nvEquipes });
-    if(data.ok){ equipes = nvEquipes; afficherToast('Équipes mises à jour.'); renderAccueil(); }
     else afficherToast(data.error || 'Erreur.');
   }
 
