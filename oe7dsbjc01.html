@@ -87,18 +87,110 @@ async function appelApiGet(qs){
   return res.json();
 }
 
-/* Cette page ne contient QUE la vue parents. Sans identifiant de match
-   valide dans l'URL, elle n'affiche rien d'exploitable — aucune autre
-   fonctionnalité de l'outil n'est accessible depuis ce fichier. */
+/* Cette page ne contient QUE la vue parents. Sans identifiant de match ou
+   de journée valide dans l'URL, elle n'affiche rien d'exploitable —
+   aucune autre fonctionnalité de l'outil n'est accessible depuis ce fichier. */
+
+const equipeDansUrl = params.get('equipe');
+const dateDansUrl = params.get('date');
 
 if (matchIdDansUrl) {
-  demarrerVueParents(matchIdDansUrl);
+  demarrerVueParents(matchIdDansUrl, racine);
+} else if (equipeDansUrl && dateDansUrl) {
+  demarrerVueJournee(equipeDansUrl, dateDansUrl);
 } else {
   racine.innerHTML = `<main><p class="etat">Lien invalide.</p></main>`;
 }
 
-function demarrerVueParents(matchId){
+/**
+ * Mode "journée" (plateau/tournoi) : plusieurs matchs pour une même équipe
+ * le même jour. Affiche un sélecteur en haut, et charge le match choisi
+ * dans un sous-conteneur en réutilisant demarrerVueParents.
+ */
+function demarrerVueJournee(equipe, date){
   racine.innerHTML = `
+    <div id="selecteur-journee" style="padding:1rem 1rem 0; max-width:520px; margin:0 auto;"></div>
+    <div id="conteneur-match"></div>
+  `;
+
+  let matchsJour = [];
+  let matchActifId = null;
+  let arreterMatchActif = null;
+
+  function choisirMatchParDefaut(){
+    const maintenant = new Date();
+    const hhmm = maintenant.toTimeString().slice(0,5);
+    const aVenir = matchsJour.find(m => m.heureDebut && m.heureDebut >= hhmm);
+    return (aVenir || matchsJour[matchsJour.length - 1]).matchId;
+  }
+
+  function renderSelecteur(){
+    const box = document.getElementById('selecteur-journee');
+    if(matchsJour.length === 0){
+      box.innerHTML = '<p class="etat">Aucun match trouvé pour cette journée.</p>';
+      return;
+    }
+    box.innerHTML = `
+      <p class="section-label" style="margin-bottom:8px;">Choisir le match à saisir</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+        ${matchsJour.map(m => `
+          <button data-id="${m.matchId}" style="padding:8px 12px; border-radius:20px; border:1.5px solid var(--ligne);
+            font-size:13px; font-weight:600; cursor:pointer;
+            background:${m.matchId===matchActifId ? 'var(--vert)' : 'var(--carte)'};
+            color:${m.matchId===matchActifId ? '#fff' : 'var(--texte)'};">
+            ${m.heureDebut || '--:--'} vs ${m.adversaire || '?'}
+          </button>`).join('')}
+      </div>
+    `;
+    box.querySelectorAll('button[data-id]').forEach(btn=>{
+      btn.addEventListener('click', ()=> selectionnerMatch(btn.dataset.id));
+    });
+  }
+
+  function selectionnerMatch(matchId){
+    if(matchId === matchActifId) return;
+    if(arreterMatchActif) arreterMatchActif();
+    matchActifId = matchId;
+    renderSelecteur();
+    arreterMatchActif = demarrerVueParents(matchId, document.getElementById('conteneur-match'));
+  }
+
+  async function chargerListe(premierChargement){
+    try {
+      const data = await appelApiGet(`action=matchsJournee&equipe=${encodeURIComponent(equipe)}&date=${encodeURIComponent(date)}`);
+      if(!data.ok) return;
+      matchsJour = data.matchs || [];
+      if(premierChargement){
+        if(matchsJour.length === 0){
+          renderSelecteur();
+          return;
+        }
+        matchActifId = choisirMatchParDefaut();
+        renderSelecteur();
+        arreterMatchActif = demarrerVueParents(matchActifId, document.getElementById('conteneur-match'));
+      } else {
+        renderSelecteur();
+      }
+    } catch (err) {
+      if(premierChargement){
+        document.getElementById('selecteur-journee').innerHTML =
+          `<p class="etat" style="color:var(--rouge)">Impossible de contacter le serveur.</p>`;
+      }
+    }
+  }
+
+  chargerListe(true);
+  setInterval(()=> chargerListe(false), 15000);
+}
+
+/**
+ * Vue d'un match unique. Rend dans `conteneur` (racine par défaut pour un
+ * lien à match unique). Renvoie une fonction d'arrêt qui coupe le polling —
+ * à appeler avant de changer de match en mode journée.
+ */
+function demarrerVueParents(matchId, conteneur){
+  conteneur = conteneur || racine;
+  conteneur.innerHTML = `
     <header class="tete-parent">
       <p class="adversaire" id="p-adversaire">Chargement…</p>
       <div class="score" id="p-score">0 - 0</div>
@@ -113,7 +205,7 @@ function demarrerVueParents(matchId){
         </div>
         <p class="section-label">Passe décisive ? (facultatif)</p>
         <div class="grille-passeurs" id="p-grillePasseurs"></div>
-        <button class="fermer-modal" onclick="fermerModalPasse()">Fermer sans passeur</button>
+        <button class="fermer-modal" id="p-fermer-modal">Fermer sans passeur</button>
       </div>
     </div>
   `;
@@ -125,22 +217,22 @@ function demarrerVueParents(matchId){
     try {
       const data = await appelApiGet(`action=match&matchId=${encodeURIComponent(matchId)}`);
       if(!data.ok || !data.match.info){
-        document.getElementById('p-contenu').innerHTML = '<p class="etat">Match introuvable. Vérifiez le lien reçu.</p>';
+        conteneur.querySelector('#p-contenu').innerHTML = '<p class="etat">Match introuvable. Vérifiez le lien reçu.</p>';
         return;
       }
       etatMatch = data.match;
       render();
     } catch (err) {
-      document.getElementById('p-contenu').innerHTML =
+      conteneur.querySelector('#p-contenu').innerHTML =
         `<p class="etat" style="color:var(--rouge)">Impossible de contacter le serveur.<br>Détail : ${String(err.message || err)}</p>`;
     }
   }
 
   function render(){
     const info = etatMatch.info;
-    document.getElementById('p-adversaire').textContent = `${info.equipe || 'Équipe'} vs ${info.adversaire}`;
-    document.getElementById('p-score').textContent = `${etatMatch.scoreNous} - ${etatMatch.scoreAdverse}`;
-    document.getElementById('p-minute').textContent = etatMatch.derniereAction && etatMatch.derniereAction.minute !== ''
+    conteneur.querySelector('#p-adversaire').textContent = `${info.equipe || 'Équipe'} vs ${info.adversaire}`;
+    conteneur.querySelector('#p-score').textContent = `${etatMatch.scoreNous} - ${etatMatch.scoreAdverse}`;
+    conteneur.querySelector('#p-minute').textContent = etatMatch.derniereAction && etatMatch.derniereAction.minute !== ''
       ? `Dernière action : ${etatMatch.derniereAction.minute}e minute` : '';
 
     const convocations = etatMatch.convocations || [];
@@ -148,18 +240,18 @@ function demarrerVueParents(matchId){
       `<button class="btn-joueur" data-joueur="${j.replace(/"/g,'&quot;')}">${j}</button>`
     ).join('');
 
-    document.getElementById('p-contenu').innerHTML = `
+    conteneur.querySelector('#p-contenu').innerHTML = `
       <p class="section-label">Toucher le buteur</p>
       <div class="grille-joueurs">${boutons}</div>
       <button class="btn-secondaire" id="p-btn-adverse">But adverse (score seulement)</button>
       <button class="btn-secondaire btn-annuler" id="p-btn-annuler">Annuler la dernière action</button>
     `;
 
-    document.querySelectorAll('#p-contenu .btn-joueur').forEach(btn=>{
+    conteneur.querySelectorAll('#p-contenu .btn-joueur').forEach(btn=>{
       btn.addEventListener('click', ()=> marquerBut(btn.dataset.joueur));
     });
-    document.getElementById('p-btn-adverse').addEventListener('click', butAdverse);
-    document.getElementById('p-btn-annuler').addEventListener('click', annulerDerniere);
+    conteneur.querySelector('#p-btn-adverse').addEventListener('click', butAdverse);
+    conteneur.querySelector('#p-btn-annuler').addEventListener('click', annulerDerniere);
   }
 
   async function marquerBut(joueur){
@@ -172,23 +264,24 @@ function demarrerVueParents(matchId){
   }
 
   function ouvrirModalPasse(joueur){
-    document.getElementById('p-texteConfirmation').textContent = `But de ${joueur} enregistré`;
+    conteneur.querySelector('#p-texteConfirmation').textContent = `But de ${joueur} enregistré`;
     const autres = (etatMatch.convocations || []).filter(j => j !== joueur);
-    document.getElementById('p-grillePasseurs').innerHTML = autres.map(j =>
+    conteneur.querySelector('#p-grillePasseurs').innerHTML = autres.map(j =>
       `<button class="btn-passeur" data-joueur="${j.replace(/"/g,'&quot;')}">${j}</button>`
     ).join('');
-    document.querySelectorAll('#p-grillePasseurs .btn-passeur').forEach(btn=>{
+    conteneur.querySelectorAll('#p-grillePasseurs .btn-passeur').forEach(btn=>{
       btn.addEventListener('click', ()=> choisirPasseur(btn.dataset.joueur));
     });
-    document.getElementById('p-overlay').classList.add('actif');
+    conteneur.querySelector('#p-overlay').classList.add('actif');
   }
 
-  window.fermerModalPasse = function(){
-    document.getElementById('p-overlay').classList.remove('actif');
-  };
+  function fermerModalPasse(){
+    conteneur.querySelector('#p-overlay').classList.remove('actif');
+  }
+  conteneur.querySelector('#p-fermer-modal').addEventListener('click', fermerModalPasse);
 
   async function choisirPasseur(passeur){
-    window.fermerModalPasse();
+    fermerModalPasse();
     const data = await appelApi('enregistrerPasse', { matchId, eventId: dernierEventId, passeur });
     if(data.ok){ etatMatch = data.match; render(); afficherToast(`Passe de ${passeur} notée`); }
   }
@@ -206,7 +299,8 @@ function demarrerVueParents(matchId){
   }
 
   charger();
-  setInterval(charger, 8000);
+  const intervalId = setInterval(charger, 8000);
+  return function arreter(){ clearInterval(intervalId); };
 }
 </script>
 </body>
