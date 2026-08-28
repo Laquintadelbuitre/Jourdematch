@@ -6,50 +6,77 @@
 <title>Gestion des matchs</title>
 <style>
   :root{
-    --vert:#1f5f3f; --vert-clair:#2e8659; --fond:#f4f6f4; --carte:#ffffff;
-    --texte:#1a2a22; --texte-doux:#5c6b62; --ligne:#dfe6e1; --rouge:#b3413a;
+    --vert:#1f5f3f; --vert-clair:#2e8659; --vert-tres-clair:#e8f2ec;
+    --fond:#f4f6f4; --carte:#ffffff;
+    --texte:#1a2a22; --texte-doux:#5c6b62; --ligne:#e4e9e5; --rouge:#b3413a;
+    --rayon:16px; --rayon-sm:10px;
+    --ombre:0 2px 12px rgba(20,40,30,0.06);
+    --ombre-vive:0 4px 18px rgba(20,40,30,0.12);
   }
   *{box-sizing:border-box;}
   body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--fond); color:var(--texte); padding-bottom:3rem; }
-  header{ background:var(--vert); color:#fff; padding:1rem; }
+    background:var(--fond); color:var(--texte); padding-bottom:3rem; -webkit-font-smoothing:antialiased; }
+  header{ background:linear-gradient(135deg, var(--vert), var(--vert-clair)); color:#fff; padding:1rem; }
   header.tete-coach{ display:flex; align-items:center; justify-content:space-between; }
   header.tete-coach h1{ font-size:16px; font-weight:600; margin:0; }
-  header.tete-coach button{ background:rgba(255,255,255,0.15); color:#fff; border:none;
-    border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; }
+  header.tete-coach button{ background:rgba(255,255,255,0.18); color:#fff; border:none;
+    border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; transition:background 0.15s ease; }
+  header.tete-coach button:active{ background:rgba(255,255,255,0.32); }
   main{ max-width:520px; margin:0 auto; padding:1.25rem 1rem; }
-  .carte{ background:var(--carte); border:1px solid var(--ligne); border-radius:14px; padding:1.25rem; margin-bottom:1.25rem; }
+  .carte{ background:var(--carte); border:1px solid var(--ligne); border-radius:var(--rayon); padding:1.25rem;
+    margin-bottom:1.25rem; box-shadow:var(--ombre); }
   .section-label{ font-size:13px; color:var(--texte-doux); font-weight:600;
     text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
-  input, select, textarea{ width:100%; padding:10px 12px; border:1.5px solid var(--ligne);
-    border-radius:8px; font-size:15px; margin-bottom:10px; background:#fff; color:var(--texte); font-family:inherit; }
+  input, select, textarea{ width:100%; padding:11px 12px; border:1.5px solid var(--ligne);
+    border-radius:var(--rayon-sm); font-size:15px; margin-bottom:10px; background:#fff; color:var(--texte);
+    font-family:inherit; transition:border-color 0.15s ease; }
+  input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--vert-clair); }
   label.champ{ font-size:13px; color:var(--texte-doux); display:block; margin-bottom:4px; }
-  .btn{ width:100%; padding:12px; border-radius:10px; border:none; font-size:15px; font-weight:600; cursor:pointer; margin-bottom:8px; }
+  .btn{ width:100%; padding:12px; border-radius:var(--rayon-sm); border:none; font-size:15px; font-weight:600;
+    cursor:pointer; margin-bottom:8px; transition:transform 0.08s ease, filter 0.15s ease; }
+  .btn:active{ transform:scale(0.98); }
   .btn-principal{ background:var(--vert); color:#fff; }
   .btn-principal:active{ background:var(--vert-clair); }
   .btn-discret{ background:var(--fond); color:var(--texte); border:1.5px solid var(--ligne); }
+  .btn-discret:active{ background:var(--ligne); }
   .btn-rouge{ background:#fff; color:var(--rouge); border:1.5px solid #e3cfcd; }
+  .btn-rouge:active{ background:#fdf3f2; }
   .liste-matchs{ display:flex; flex-direction:column; gap:8px; }
   .item-match{ display:flex; justify-content:space-between; align-items:center;
-    padding:12px 14px; border:1.5px solid var(--ligne); border-radius:10px; cursor:pointer; }
-  .item-match:active{ background:var(--fond); }
+    padding:12px 14px; border:1.5px solid var(--ligne); border-radius:var(--rayon-sm); cursor:pointer;
+    transition:background 0.15s ease, box-shadow 0.15s ease; }
+  .item-match:active{ background:var(--vert-tres-clair); }
   .item-match .droite{ font-size:12px; color:var(--texte-doux); }
   .grille-cases{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
   .case-joueur{ display:flex; align-items:center; gap:8px; border:1.5px solid var(--ligne);
-    border-radius:8px; padding:8px 10px; font-size:14px; }
+    border-radius:var(--rayon-sm); padding:8px 10px; font-size:14px; transition:background 0.15s ease; }
+  .case-joueur:has(input:checked){ background:var(--vert-tres-clair); border-color:var(--vert-clair); }
   .case-joueur input{ width:auto; margin:0; }
-  .score-live{ text-align:center; font-size:40px; font-weight:700; margin-bottom:14px; }
+  .duel{ display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:16px; }
+  .duel .logo-cercle{ width:56px; height:56px; }
+  .duel .vs{ font-size:12px; font-weight:700; color:var(--texte-doux); letter-spacing:0.05em; }
+  .duel .nom-equipe{ font-size:12px; color:var(--texte-doux); text-align:center; max-width:90px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:4px; }
+  .logo-cercle{ border-radius:50%; background:#fff; border:1.5px solid var(--ligne);
+    box-shadow:var(--ombre); object-fit:contain; padding:6px; display:block; }
+  .logo-placeholder{ display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:22px; color:var(--texte-doux); background:var(--vert-tres-clair); }
+  .zone-upload-logo{ border:1.5px dashed var(--ligne); border-radius:var(--rayon-sm); padding:14px;
+    text-align:center; margin-bottom:10px; }
+  .zone-upload-logo label{ font-size:13px; color:var(--vert); font-weight:600; cursor:pointer; }
+  .score-live{ text-align:center; font-size:44px; font-weight:700; margin-bottom:14px; letter-spacing:1px; }
   .grille-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
-  .lien-parent{ display:flex; gap:8px; align-items:center; background:var(--fond); border-radius:8px;
+  .lien-parent{ display:flex; gap:8px; align-items:center; background:var(--fond); border-radius:var(--rayon-sm);
     padding:10px; margin-bottom:10px; font-size:12px; color:var(--texte-doux); word-break:break-all; }
   .lien-parent button{ flex-shrink:0; background:var(--vert); color:#fff; border:none;
-    border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; }
+    border-radius:6px; padding:6px 10px; font-size:12px; cursor:pointer; transition:background 0.15s ease; }
+  .lien-parent button:active{ background:var(--vert-clair); }
   .retour{ background:none; border:none; color:var(--texte-doux); font-size:13px; margin-bottom:14px; cursor:pointer; padding:0; }
   .masque{ display:none; }
   .etat{ text-align:center; color:var(--texte-doux); font-size:14px; padding:2rem 1rem; }
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--texte);
     color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; opacity:0; pointer-events:none;
-    transition:opacity 0.25s ease; z-index:60; }
+    transition:opacity 0.25s ease; z-index:60; box-shadow:var(--ombre-vive); }
   .toast.visible{ opacity:1; }
 </style>
 </head>
@@ -64,6 +91,9 @@ const API_URL = 'https://script.google.com/macros/s/AKfycby6pUMd49pdfWTzTAwVIg_R
 
 // Nom du fichier public (parents), situé dans le même dossier que cette page.
 const NOM_FICHIER_PARENTS = 'oe7dsbjc01.html';
+
+// ⚠️ Collez ici l'URL du logo Limoges Football (le même sur tous les matchs).
+const LOGO_LIMOGES_URL = 'COLLEZ_ICI_URL_LOGO_LIMOGES';
 
 const racine = document.getElementById('racine');
 
@@ -88,6 +118,40 @@ async function appelApi(action, data){
 async function appelApiGet(qs){
   const res = await fetch(`${API_URL}?${qs}`);
   return res.json();
+}
+
+/** Redimensionne et compresse une image uploadée en data URL compact (pour tenir dans une cellule Sheets, limite ~50 000 caractères). */
+function compresserImage(fichier){
+  return new Promise((resolve, reject)=>{
+    const lecteur = new FileReader();
+    lecteur.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+    lecteur.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image illisible.'));
+      img.onload = () => {
+        const TAILLE_MAX = 160;
+        const ratio = Math.min(1, TAILLE_MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        let qualite = 0.7;
+        let dataUrl = canvas.toDataURL('image/jpeg', qualite);
+        while(dataUrl.length > 40000 && qualite > 0.2){
+          qualite -= 0.15;
+          dataUrl = canvas.toDataURL('image/jpeg', qualite);
+        }
+        if(dataUrl.length > 40000){ reject(new Error('Image trop complexe même compressée, essayez-en une autre.')); return; }
+        resolve(dataUrl);
+      };
+      img.src = lecteur.result;
+    };
+    lecteur.readAsDataURL(fichier);
+  });
 }
 
 const MOT_DE_PASSE_STOCKE = 'matchday_pwd';
@@ -156,7 +220,10 @@ function afficherAppCoach(pwd){
       .sort((a,b)=> new Date(b.date) - new Date(a.date))
       .map(m => `
         <div class="item-match" data-id="${m.matchId}">
-          <div>${m.equipe || 'Équipe'} vs ${m.adversaire}</div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            ${logoImg(m.logoAdversaire, (m.adversaire||'?').charAt(0).toUpperCase(), 32)}
+            <div>${m.equipe || 'Équipe'} vs ${m.adversaire}</div>
+          </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <div class="droite">${m.date} · ${m.heureDebut}</div>
             <button class="btn-suppr-match" data-id="${m.matchId}" title="Supprimer ce match"
@@ -259,13 +326,32 @@ function afficherAppCoach(pwd){
         <button class="retour" id="btn-retour">&larr; Retour au calendrier</button>
 
         <div class="carte">
-          <p class="section-label">${info.equipe || 'Équipe'} vs ${info.adversaire} — ${info.date} ${info.heureDebut}</p>
+          <p class="section-label" style="text-align:center;">${info.date} · ${info.heureDebut}</p>
+          <div class="duel">
+            <div style="text-align:center;">
+              ${logoImg(LOGO_LIMOGES_URL, 'LF')}
+              <div class="nom-equipe">${info.equipe || 'Limoges FC'}</div>
+            </div>
+            <span class="vs">VS</span>
+            <div style="text-align:center;">
+              ${logoImg(info.logoAdversaire, (info.adversaire || '?').charAt(0).toUpperCase())}
+              <div class="nom-equipe">${info.adversaire}</div>
+            </div>
+          </div>
           <div class="score-live">${etatMatch.scoreNous} - ${etatMatch.scoreAdverse}</div>
           <div class="grille-actions">
             <button class="btn btn-principal" id="btn-action-but">But (nous)</button>
             <button class="btn btn-discret" id="btn-action-adverse">But adverse</button>
           </div>
           <button class="btn btn-rouge" id="btn-action-annuler">Annuler la dernière action</button>
+        </div>
+
+        <div class="carte">
+          <p class="section-label">Logo de l'adversaire</p>
+          <div class="zone-upload-logo">
+            <label for="input-logo-adversaire">${info.logoAdversaire ? '🔄 Changer le logo' : '📷 Ajouter le logo adverse'}</label>
+            <input type="file" id="input-logo-adversaire" accept="image/*" style="display:none;">
+          </div>
         </div>
 
         <div class="carte">
@@ -301,6 +387,30 @@ function afficherAppCoach(pwd){
     document.getElementById('btn-copier-lien').addEventListener('click', ()=> copierLien(lienParent));
     document.getElementById('btn-copier-lien-journee').addEventListener('click', ()=> copierLien(lienJournee));
     document.getElementById('btn-save-convocations').addEventListener('click', enregistrerConvocations);
+    document.getElementById('input-logo-adversaire').addEventListener('change', changerLogoAdversaire);
+  }
+
+  /** Retourne le HTML d'un cercle-logo : l'image si une URL/dataURL est fournie, sinon une pastille avec une initiale. */
+  function logoImg(source, initiale, taille){
+    taille = taille || 56;
+    if(source){
+      return `<img class="logo-cercle" src="${source}" alt="" width="${taille}" height="${taille}" style="width:${taille}px;height:${taille}px;">`;
+    }
+    return `<div class="logo-cercle logo-placeholder" style="width:${taille}px;height:${taille}px; font-size:${Math.round(taille*0.4)}px;">${initiale}</div>`;
+  }
+
+  async function changerLogoAdversaire(evt){
+    const fichier = evt.target.files[0];
+    if(!fichier) return;
+    try {
+      afficherToast('Compression du logo…');
+      const dataUrl = await compresserImage(fichier);
+      const data = await appelApi('setLogoAdversaire', { pwd, matchId: matchActuel, logoAdversaire: dataUrl });
+      if(data.ok){ afficherToast('Logo enregistré.'); ouvrirMatch(matchActuel); }
+      else afficherToast(data.error || 'Erreur.');
+    } catch (err) {
+      afficherToast(String(err.message || err));
+    }
   }
 
   async function actionBut(){
