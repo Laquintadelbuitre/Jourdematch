@@ -157,7 +157,11 @@ function afficherAppCoach(pwd){
       .map(m => `
         <div class="item-match" data-id="${m.matchId}">
           <div>${m.equipe || 'Équipe'} vs ${m.adversaire}</div>
-          <div class="droite">${m.date} · ${m.heureDebut}</div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div class="droite">${m.date} · ${m.heureDebut}</div>
+            <button class="btn-suppr-match" data-id="${m.matchId}" title="Supprimer ce match"
+              style="background:none; border:none; color:var(--rouge); font-size:16px; line-height:1; padding:4px; cursor:pointer;">🗑</button>
+          </div>
         </div>`
       ).join('') || '<p style="color:var(--texte-doux); font-size:14px;">Aucun match dans le calendrier pour l’instant.</p>';
 
@@ -192,6 +196,21 @@ function afficherAppCoach(pwd){
     document.querySelectorAll('.item-match').forEach(el=>{
       el.addEventListener('click', ()=> ouvrirMatch(el.dataset.id));
     });
+    document.querySelectorAll('.btn-suppr-match').forEach(btn=>{
+      btn.addEventListener('click', (evt)=>{
+        evt.stopPropagation(); // évite d'ouvrir le match en même temps
+        supprimerMatchListe(btn.dataset.id);
+      });
+    });
+  }
+
+  async function supprimerMatchListe(matchId){
+    const m = calendrier.find(x => x.matchId === matchId);
+    const libelle = m ? `${m.equipe || 'Équipe'} vs ${m.adversaire} (${m.date})` : 'ce match';
+    if(!confirm(`Supprimer définitivement ${libelle} ?\nLes convocations et événements liés seront aussi supprimés.`)) return;
+    const data = await appelApi('supprimerMatch', { pwd, matchId });
+    if(data.ok){ afficherToast('Match supprimé.'); chargerAccueil(); }
+    else afficherToast(data.error || 'Erreur.');
   }
 
   function deconnexion(){
