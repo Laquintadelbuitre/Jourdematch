@@ -74,6 +74,11 @@
   .retour{ background:none; border:none; color:var(--texte-doux); font-size:13px; margin-bottom:14px; cursor:pointer; padding:0; }
   .masque{ display:none; }
   .etat{ text-align:center; color:var(--texte-doux); font-size:14px; padding:2rem 1rem; }
+  .liste-buts{ display:flex; flex-direction:column; gap:6px; }
+  .ligne-but{ display:flex; align-items:center; gap:10px; background:var(--fond); border:1.5px solid var(--ligne);
+    border-radius:var(--rayon-sm); padding:10px 12px; font-size:14px; }
+  .minute-but{ font-weight:700; color:var(--vert); min-width:34px; }
+  .passeur-but{ color:var(--texte-doux); font-size:13px; }
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--texte);
     color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; opacity:0; pointer-events:none;
     transition:opacity 0.25s ease; z-index:60; box-shadow:var(--ombre-vive); }
@@ -152,6 +157,31 @@ function compresserImage(fichier){
     };
     lecteur.readAsDataURL(fichier);
   });
+}
+
+/** Construit la liste chronologique des buts (heure, buteur, passeur) à partir des événements valides du match. */
+function statsMatchHtml(evenements){
+  const buts = (evenements || [])
+    .slice()
+    .sort((a,b)=> new Date(a.horodatage) - new Date(b.horodatage));
+
+  if(buts.length === 0){
+    return '<p class="etat" style="padding:0.5rem 0;">Aucun but pour le moment.</p>';
+  }
+
+  return `<div class="liste-buts">${buts.map(ev => {
+    const heure = new Date(ev.horodatage).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    return `
+    <div class="ligne-but">
+      <span class="minute-but">${heure}</span>
+      <span class="detail-but">
+        ${ev.type === 'but'
+          ? `<strong>${ev.buteur}</strong>${ev.passeur ? ` <span class="passeur-but">(passe : ${ev.passeur})</span>` : ''}`
+          : `<span style="color:var(--texte-doux)">But adverse</span>`}
+      </span>
+    </div>`;
+  }).join('')}
+  </div>`;
 }
 
 const MOT_DE_PASSE_STOCKE = 'matchday_pwd';
@@ -347,6 +377,20 @@ function afficherAppCoach(pwd){
         </div>
 
         <div class="carte">
+          <p class="section-label">Statistiques du match</p>
+          ${statsMatchHtml(etatMatch.evenements)}
+        </div>
+
+        <div class="carte">
+          <p class="section-label">Heure de coup d'envoi</p>
+          <p style="font-size:12px; color:var(--texte-doux); margin:-4px 0 10px;">Utile si l'heure importée était celle du rendez-vous, pas du début réel du match. Sert au calcul interne de la minute de jeu.</p>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="time" id="input-heure-debut" value="${info.heureDebut || ''}" style="margin-bottom:0;">
+            <button class="btn btn-discret" id="btn-maj-heure" style="width:auto; white-space:nowrap; margin-bottom:0;">Mettre à jour</button>
+          </div>
+        </div>
+
+        <div class="carte">
           <p class="section-label">Logo de l'adversaire</p>
           <div class="zone-upload-logo">
             <label for="input-logo-adversaire">${info.logoAdversaire ? '🔄 Changer le logo' : '📷 Ajouter le logo adverse'}</label>
@@ -388,6 +432,7 @@ function afficherAppCoach(pwd){
     document.getElementById('btn-copier-lien-journee').addEventListener('click', ()=> copierLien(lienJournee));
     document.getElementById('btn-save-convocations').addEventListener('click', enregistrerConvocations);
     document.getElementById('input-logo-adversaire').addEventListener('change', changerLogoAdversaire);
+    document.getElementById('btn-maj-heure').addEventListener('click', modifierHeureDebut);
   }
 
   /** Retourne le HTML d'un cercle-logo : l'image si une URL/dataURL est fournie, sinon une pastille avec une initiale. */
@@ -411,6 +456,14 @@ function afficherAppCoach(pwd){
     } catch (err) {
       afficherToast(String(err.message || err));
     }
+  }
+
+  async function modifierHeureDebut(){
+    const heureDebut = document.getElementById('input-heure-debut').value;
+    if(!heureDebut){ afficherToast('Choisissez une heure.'); return; }
+    const data = await appelApi('modifierHeureDebut', { pwd, matchId: matchActuel, heureDebut });
+    if(data.ok){ afficherToast('Heure de coup d\'envoi mise à jour.'); ouvrirMatch(matchActuel); }
+    else afficherToast(data.error || 'Erreur.');
   }
 
   async function actionBut(){
