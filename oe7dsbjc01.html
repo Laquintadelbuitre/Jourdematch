@@ -35,11 +35,16 @@
     text-transform:uppercase; letter-spacing:0.04em; margin:0 0 12px; }
   .grille-joueurs{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:1.5rem; }
   .btn-joueur{ background:var(--carte); border:1.5px solid var(--ligne); border-radius:var(--rayon);
-    padding:16px 8px; font-size:16px; font-weight:600; color:var(--texte); cursor:pointer;
-    min-height:56px; box-shadow:var(--ombre); -webkit-tap-highlight-color:transparent;
+    padding:14px 8px; font-size:16px; font-weight:600; color:var(--texte); cursor:pointer;
+    min-height:60px; box-shadow:var(--ombre); -webkit-tap-highlight-color:transparent;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
     transition:transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease; }
   .btn-joueur:active{ transform:scale(0.96); background:var(--vert-clair); color:#fff; border-color:var(--vert-clair);
     box-shadow:var(--ombre-vive); }
+  .nom-joueur{ line-height:1.15; }
+  .badges-joueur{ display:flex; gap:4px; }
+  .badge-stat{ font-size:13px; background:rgba(0,0,0,0.06); border-radius:8px; padding:1px 7px; line-height:1.5; }
+  .btn-joueur:active .badge-stat{ background:rgba(255,255,255,0.25); }
   .btn-secondaire{ width:100%; background:var(--carte); border:1.5px solid var(--ligne); border-radius:var(--rayon-sm);
     padding:12px; font-size:14px; color:var(--texte-doux); margin-bottom:10px; cursor:pointer;
     box-shadow:var(--ombre); transition:transform 0.08s ease, background 0.15s ease; }
@@ -95,6 +100,22 @@ function logoImg(source, initiale, taille){
     return `<img class="logo-cercle" src="${source}" alt="" style="width:${taille}px;height:${taille}px;">`;
   }
   return `<div class="logo-cercle logo-placeholder" style="width:${taille}px;height:${taille}px; font-size:${Math.round(taille*0.4)}px;">${initiale}</div>`;
+}
+
+/** Compte les buts et passes décisives de chaque joueur, à partir des événements valides du match. */
+function calculerStatsParJoueur(evenements){
+  const stats = {};
+  (evenements || []).forEach(ev => {
+    if(ev.type === 'but' && ev.buteur){
+      stats[ev.buteur] = stats[ev.buteur] || { buts: 0, passes: 0 };
+      stats[ev.buteur].buts++;
+    }
+    if(ev.passeur){
+      stats[ev.passeur] = stats[ev.passeur] || { buts: 0, passes: 0 };
+      stats[ev.passeur].passes++;
+    }
+  });
+  return stats;
 }
 
 /** Construit la liste chronologique des buts (heure, buteur, passeur) à partir des événements valides du match. */
@@ -325,9 +346,18 @@ function demarrerVueParents(matchId, conteneur){
       ? `Dernière action : ${etatMatch.derniereAction.minute}e minute` : '';
 
     const convocations = etatMatch.convocations || [];
-    const boutons = convocations.map(j =>
-      `<button class="btn-joueur" data-joueur="${j.replace(/"/g,'&quot;')}">${j}</button>`
-    ).join('');
+    const statsParJoueur = calculerStatsParJoueur(etatMatch.evenements);
+    const boutons = convocations.map(j => {
+      const s = statsParJoueur[j] || { buts: 0, passes: 0 };
+      const badges = [
+        s.buts ? `<span class="badge-stat badge-but">⚽${s.buts>1?'×'+s.buts:''}</span>` : '',
+        s.passes ? `<span class="badge-stat badge-passe">👟${s.passes>1?'×'+s.passes:''}</span>` : ''
+      ].join('');
+      return `<button class="btn-joueur" data-joueur="${j.replace(/"/g,'&quot;')}">
+        <span class="nom-joueur">${j}</span>
+        ${badges ? `<span class="badges-joueur">${badges}</span>` : ''}
+      </button>`;
+    }).join('');
 
     conteneur.querySelector('#p-contenu').innerHTML = `
       <p class="section-label">Toucher le buteur</p>
