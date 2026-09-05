@@ -61,6 +61,11 @@
   .fermer-modal{ width:100%; text-align:center; background:none; border:none; color:var(--texte-doux);
     font-size:14px; padding:10px; cursor:pointer; }
   .etat{ text-align:center; color:var(--texte-doux); font-size:14px; padding:2rem 1rem; }
+  .liste-buts{ display:flex; flex-direction:column; gap:6px; margin-bottom:1rem; }
+  .ligne-but{ display:flex; align-items:center; gap:10px; background:var(--carte); border:1.5px solid var(--ligne);
+    border-radius:var(--rayon-sm); padding:10px 12px; font-size:14px; box-shadow:var(--ombre); }
+  .minute-but{ font-weight:700; color:var(--vert); min-width:34px; }
+  .passeur-but{ color:var(--texte-doux); font-size:13px; }
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--texte);
     color:#fff; padding:10px 18px; border-radius:24px; font-size:13px; opacity:0; pointer-events:none;
     transition:opacity 0.25s ease; z-index:60; box-shadow:var(--ombre-vive); }
@@ -90,6 +95,31 @@ function logoImg(source, initiale, taille){
     return `<img class="logo-cercle" src="${source}" alt="" style="width:${taille}px;height:${taille}px;">`;
   }
   return `<div class="logo-cercle logo-placeholder" style="width:${taille}px;height:${taille}px; font-size:${Math.round(taille*0.4)}px;">${initiale}</div>`;
+}
+
+/** Construit la liste chronologique des buts (heure, buteur, passeur) à partir des événements valides du match. */
+function statsMatchHtml(evenements){
+  const buts = (evenements || [])
+    .slice()
+    .sort((a,b)=> new Date(a.horodatage) - new Date(b.horodatage));
+
+  if(buts.length === 0){
+    return '<p class="etat" style="padding:0.5rem 0;">Aucun but pour le moment.</p>';
+  }
+
+  return `<div class="liste-buts">${buts.map(ev => {
+    const heure = new Date(ev.horodatage).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    return `
+    <div class="ligne-but">
+      <span class="minute-but">${heure}</span>
+      <span class="detail-but">
+        ${ev.type === 'but'
+          ? `<strong>${ev.buteur}</strong>${ev.passeur ? ` <span class="passeur-but">(passe : ${ev.passeur})</span>` : ''}`
+          : `<span style="color:var(--texte-doux)">But adverse</span>`}
+      </span>
+    </div>`;
+  }).join('')}
+  </div>`;
 }
 
 function afficherToast(msg){
@@ -304,6 +334,8 @@ function demarrerVueParents(matchId, conteneur){
       <div class="grille-joueurs">${boutons}</div>
       <button class="btn-secondaire" id="p-btn-adverse">But adverse (score seulement)</button>
       <button class="btn-secondaire btn-annuler" id="p-btn-annuler">Annuler la dernière action</button>
+      <p class="section-label" style="margin-top:1.5rem;">Statistiques du match</p>
+      ${statsMatchHtml(etatMatch.evenements)}
     `;
 
     conteneur.querySelectorAll('#p-contenu .btn-joueur').forEach(btn=>{
