@@ -166,6 +166,64 @@ async function appelApiGet(qs){
   return res.json();
 }
 
+/* ======================= IDENTIFICATION PARENT (prénom, valable 24h/appareil) =======================
+   Ce n'est pas une authentification (rien n'est vérifié) : ça sert à attacher un prénom déclaratif
+   à chaque action, pour dissuader et tracer les usages abusifs (score effacé en boucle, etc.). */
+const PRENOM_CLE = 'matchday_prenom_v1';
+const PRENOM_VALIDITE_MS = 24 * 60 * 60 * 1000;
+
+function prenomEnregistre(){
+  try{
+    const brut = localStorage.getItem(PRENOM_CLE);
+    if(!brut) return null;
+    const obj = JSON.parse(brut);
+    if(!obj || !obj.prenom || !obj.horodatage) return null;
+    if(Date.now() - obj.horodatage > PRENOM_VALIDITE_MS) return null;
+    return obj.prenom;
+  }catch(e){ return null; }
+}
+
+function sauverPrenom(prenom){
+  try{ localStorage.setItem(PRENOM_CLE, JSON.stringify({ prenom, horodatage: Date.now() })); }catch(e){}
+}
+
+function demanderPrenom(){
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay actif';
+    overlay.innerHTML = `
+      <div class="modal">
+        <p class="section-label">Avant de continuer</p>
+        <p style="margin:0 0 12px; font-size:14px; color:var(--texte-doux);">
+          Entre ton prénom pour valider une action. Ça ne sera redemandé que dans 24h, sur cet appareil.
+        </p>
+        <input type="text" id="p-inputPrenom" placeholder="Ton prénom" maxlength="30"
+          style="width:100%; padding:12px 14px; border-radius:var(--rayon-sm); border:1.5px solid var(--ligne);
+          font-size:16px; margin-bottom:12px; box-sizing:border-box;">
+        <button class="btn-secondaire" id="p-validerPrenom" style="color:var(--vert); font-weight:700;">Valider</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#p-inputPrenom');
+    const valider = () => {
+      const val = input.value.trim();
+      if(!val){ input.focus(); return; }
+      sauverPrenom(val);
+      document.body.removeChild(overlay);
+      resolve(val);
+    };
+    overlay.querySelector('#p-validerPrenom').addEventListener('click', valider);
+    input.addEventListener('keydown', e => { if(e.key === 'Enter') valider(); });
+    setTimeout(()=> input.focus(), 50);
+  });
+}
+
+async function assurerPrenom(){
+  const existant = prenomEnregistre();
+  if(existant) return existant;
+  return demanderPrenom();
+}
+
 /* Cette page ne contient QUE la vue parents. Sans identifiant de match ou
    de journée valide dans l'URL, elle n'affiche rien d'exploitable —
    aucune autre fonctionnalité de l'outil n'est accessible depuis ce fichier. */
@@ -377,13 +435,14 @@ function demarrerVueParents(matchId, conteneur){
 
   let promesseButEnCours = null;
 
-  function marquerBut(joueur){
+  async function marquerBut(joueur){
+    const prenom = await assurerPrenom();
     // Mise à jour optimiste : on ouvre tout de suite la fenêtre de passe avec
     // la liste déjà connue localement, sans attendre la réponse du serveur.
     dernierEventId = null;
     ouvrirModalPasse(joueur);
 
-    promesseButEnCours = appelApi('enregistrerBut', { matchId, buteur: joueur, role: 'parent' })
+    promesseButEnCours = appelApi('enregistrerBut', { matchId, buteur: joueur, role: 'parent', parentPrenom: prenom })
       .then(data => {
         if(!data.ok){ afficherToast('Erreur, réessayez.'); return null; }
         etatMatch = data.match;
@@ -417,18 +476,20 @@ function demarrerVueParents(matchId, conteneur){
     // clic très rapide), on patiente juste ce qu'il faut pour avoir l'eventId.
     const eventId = dernierEventId || (promesseButEnCours && await promesseButEnCours);
     if(!eventId){ afficherToast('Erreur, réessayez.'); return; }
-    const data = await appelApi('enregistrerPasse', { matchId, eventId, passeur });
+    const data = await appelApi('enregistrerPasse', { matchId, eventId, passeur, parentPrenom: prenomEnregistre() });
     if(data.ok){ etatMatch = data.match; render(); afficherToast(`Passe de ${passeur} notée`); }
   }
 
   async function butAdverse(){
-    const data = await appelApi('butAdverse', { matchId, role: 'parent' });
+    const prenom = await assurerPrenom();
+    const data = await appelApi('butAdverse', { matchId, role: 'parent', parentPrenom: prenom });
     if(data.ok){ etatMatch = data.match; render(); }
   }
 
   async function annulerDerniere(){
     if(!confirm('Annuler la toute dernière action enregistrée ?')) return;
-    const data = await appelApi('annulerDerniere', { matchId });
+    const prenom = await assurerPrenom();
+    const data = await appelApi('annulerDerniere', { matchId, parentPrenom: prenom });
     if(data.ok){ etatMatch = data.match; render(); afficherToast('Dernière action annulée'); }
     else afficherToast(data.error || 'Rien à annuler.');
   }
